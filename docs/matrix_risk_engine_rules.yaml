@@ -1,0 +1,551 @@
+# Matrix Risk Engine - Domain Rules
+# Version: 1.0
+# Date: 2026-01-25
+# Status: Active
+
+---
+
+# Data Versioning Rules
+data_versioning:
+  version_tag_format:
+    pattern: "^v[0-9]{8}_[a-z0-9_]+$"
+    description: "Version tags must follow format vYYYYMMDD_label (e.g., v20260125_eod)"
+    examples:
+      - "v20260125_eod"
+      - "v20260125_morning_fix"
+      - "v20260124_final"
+
+  immutability:
+    rule: "Version tags are immutable once written"
+    enforcement: "raise_error"
+    error_type: "VersionExistsError"
+    message: "Cannot overwrite existing version {version} for symbol {symbol}"
+
+  default_version:
+    rule: "Queries without version parameter default to latest version"
+    enforcement: "automatic"
+
+  retention_policy:
+    keep_days: 90
+    action_after_expiry: "archive_to_s3"
+    archive_path: "s3://matrix-archive/{year}/{month}/{symbol}/{version}"
+
+  metadata_required:
+    fields:
+      - name: "version"
+        type: "string"
+        required: true
+      - name: "published_date"
+        type: "datetime"
+        required: true
+      - name: "source"
+        type: "string"
+        required: true
+      - name: "quality_flags"
+        type: "dict"
+        required: true
+
+---
+
+# Point-in-Time Correctness Rules
+point_in_time:
+  as_of_date_filtering:
+    rule: "Data queries with as_of_date MUST filter out records with published_date > as_of_date"
+    enforcement: "mandatory"
+    validation: "automated_gate"
+
+  corporate_actions:
+    rule: "Corporate actions applied only if effective_date <= as_of_date"
+    enforcement: "mandatory"
+    examples:
+      - scenario: "Stock split on 2020-06-15"
+        as_of_date: "2020-06-10"
+        action: "Do not apply split adjustment"
+      - scenario: "Stock split on 2020-06-15"
+        as_of_date: "2020-06-20"
+        action: "Apply split adjustment"
+
+  future_date_rejection:
+    rule: "Reject queries with as_of_date in the future relative to data availability"
+    enforcement: "raise_error"
+    error_type: "InvalidDateError"
+    message: "as_of_date {as_of_date} is in the future relative to latest data {latest_date}"
+
+  backtest_no_lookahead:
+    rule: "Backtests MUST NOT use data published after the simulated trade date"
+    enforcement: "validation_gate"
+    check_method: "compare_published_date_vs_trade_date"
+    failure_action: "halt_and_report"
+
+---
+
+# Transaction Cost Modeling Rules
+transaction_costs:
+  model_type:
+    default: "linear"
+    allowed_values: ["linear"]
+    future_support: ["market_impact_almgren_chriss"]  # Post-MVP
+
+  linear_model:
+    components:
+      spread:
+        description: "Bid-ask spread cost"
+        unit: "basis_points"
+        default: 10
+        range: [0, 200]
+        validation: "non_negative"
+
+      commission:
+        description: "Brokerage commission"
+        unit: "basis_points"
+        default: 5
+        range: [0, 100]
+        validation: "non_negative"
+
+    total_cost_formula: "spread_bps + commission_bps"
+
+  cost_application:
+    rule: "Transaction costs MUST be deducted from gross returns"
+    timing: "at_trade_execution"
+    tracking: "cumulative_costs_tracked_separately"
+
+  validation:
+    rule: "Backtest with zero costs MUST have higher returns than with costs"
+    enforcement: "unit_test"
+    test_name: "test_transaction_cost_deduction"
+
+---
+
+# VaR Calculation Rules
+var_calculation:
+  methods:
+    historical:
+      description: "Historical Value at Risk"
+      window_days: 250
+      confidence_levels: [0.95, 0.99]
+      percentile_method: "linear_interpolation"
+
+    parametric:
+      description: "Parametric VaR (variance-covariance)"
+      confidence_levels: [0.95, 0.99]
+      distribution: "normal"
+      covariance_estimation: "sample_covariance"
+
+    monte_carlo:
+      description: "Monte Carlo VaR (full revaluation)"
+      status: "out_of_scope_mvp"
+      defer_to: "post_mvp"
+
+  data_requirements:
+    min_observations: 250
+    frequency: "daily"
+    missing_data_handling: "forward_fill_or_error"  # Configurable
+
+  computation_time_limit:
+    max_duration_minutes: 15
+    portfolio_size: 2000
+    enforcement: "performance_test"
+
+  backtesting_validation:
+    rule: "VaR at 95% confidence should be breached ~5% of time over backtesting period"
+    tolerance: "4% to 6%"
+    test_period_days: 250
+    expected_breaches: [10, 15]  # For 250 days
+
+  cvar_relationship:
+    rule: "CVaR MUST be >= VaR for all confidence levels"
+    enforcement: "invariant_check"
+    error_type: "InvariantViolationError"
+    message: "CVaR {cvar} < VaR {var} for confidence level {level}"
+
+---
+
+# Greeks Computation Rules
+greeks:
+  supported_greeks:
+    options:
+      - name: "delta"
+        description: "First derivative w.r.t. underlying price"
+        range: [-1, 1]
+      - name: "gamma"
+        description: "Second derivative w.r.t. underlying price"
+        range: [0, null]
+      - name: "vega"
+        description: "Derivative w.r.t. implied volatility"
+        range: [0, null]
+      - name: "theta"
+        description: "Derivative w.r.t. time"
+        range: [null, 0]
+      - name: "rho"
+        description: "Derivative w.r.t. risk-free rate"
+        range: [null, null]
+
+    fixed_income:
+      - name: "duration"
+        description: "Modified duration (sensitivity to yield)"
+        range: [0, null]
+      - name: "convexity"
+        description: "Second derivative w.r.t. yield"
+        range: [0, null]
+
+    equities:
+      - name: "delta"
+        description: "For stocks, delta = number of shares"
+        value: "shares"
+      - name: "duration"
+        description: "For stocks, duration = 0"
+        value: 0
+
+  valuation_consistency:
+    rule: "All Greeks MUST be computed at the same market data snapshot (as_of_date)"
+    enforcement: "mandatory"
+    validation: "check_as_of_date_matches"
+
+  accuracy_requirement:
+    rule: "Greeks MUST match manual calculations within 1% deviation"
+    enforcement: "validation_test"
+    test_method: "cross_validate_vs_black_scholes"
+    tolerance: 0.01
+
+  computation_failure_handling:
+    rule: "If Greeks computation fails for single position, log error and continue with rest"
+    enforcement: "graceful_degradation"
+    logging_level: "ERROR"
+
+  aggregation:
+    rule: "Portfolio Greeks = sum of position Greeks (linear aggregation)"
+    enforcement: "automatic"
+
+---
+
+# Constraint Validation Rules
+constraints:
+  types:
+    sector_limit:
+      description: "Maximum exposure to a sector"
+      bounds:
+        lower: "min_sector_exposure"
+        upper: "max_sector_exposure"
+      example:
+        type: "sector_limit"
+        securities: ["Technology"]
+        bounds: {lower: 0.0, upper: 0.10}
+
+    position_limit:
+      description: "Maximum exposure to a single position"
+      bounds:
+        lower: "min_position_weight"
+        upper: "max_position_weight"
+      example:
+        type: "position_limit"
+        securities: ["all"]
+        bounds: {lower: -0.05, upper: 0.05}
+
+    turnover_limit:
+      description: "Maximum portfolio turnover"
+      bounds:
+        lower: 0.0
+        upper: "max_turnover"
+      example:
+        type: "turnover_limit"
+        securities: ["all"]
+        bounds: {lower: 0.0, upper: 0.20}
+
+    factor_exposure_limit:
+      description: "Exposure to risk factors (e.g., beta, size, value)"
+      bounds:
+        lower: "min_factor_exposure"
+        upper: "max_factor_exposure"
+      example:
+        type: "factor_exposure_limit"
+        securities: ["beta"]
+        bounds: {lower: -0.1, upper: 0.1}
+
+  feasibility:
+    rule: "bounds['lower'] <= bounds['upper'] for all constraints"
+    enforcement: "validation_on_create"
+    error_type: "InfeasibleConstraintError"
+    message: "Lower bound {lower} exceeds upper bound {upper} for constraint {name}"
+
+  universe_validation:
+    rule: "All referenced securities MUST exist in universe"
+    enforcement: "validation_on_create"
+    error_type: "InvalidSecurityError"
+    message: "Security {security} in constraint {name} not found in universe"
+
+  optimization_enforcement:
+    rule: "Solver MUST return feasible solution OR status 'infeasible'"
+    no_best_effort: true
+    timeout_seconds: 30
+    action_on_timeout: "raise_error"
+    error_type: "OptimizationTimeoutError"
+
+  post_optimization_validation:
+    rule: "All constraints MUST be satisfied in returned solution"
+    enforcement: "validation_gate"
+    tolerance: 1e-6
+    action_on_violation: "reject_solution"
+
+---
+
+# Data Quality Validation Rules
+data_quality:
+  gates:
+    missing_data:
+      threshold: 0.001  # 0.1%
+      rule: "Missing data percentage MUST be < 0.1%"
+      enforcement: "validation_gate"
+      action_on_failure: "reject_data"
+
+    outlier_detection:
+      method: "z_score"
+      threshold: 5.0  # 5 sigma
+      rule: "Flag values beyond 5 sigma from mean"
+      enforcement: "warning"
+      action: "log_outliers_for_review"
+
+    negative_prices:
+      rule: "Reject negative prices except for spreads/yields"
+      allowed_negative:
+        - "spread"
+        - "yield"
+        - "interest_rate"
+      enforcement: "validation_gate"
+      action_on_failure: "reject_data"
+
+    zero_volume:
+      rule: "Flag zero volume as suspicious"
+      enforcement: "warning"
+      action: "log_for_review"
+
+  validation_report:
+    required_fields:
+      - "missing_pct"
+      - "outliers_count"
+      - "negative_price_count"
+      - "zero_volume_count"
+      - "overall_status"
+    output_format: "json"
+    output_path: "artifacts/data_quality_reports/{symbol}_{version}.json"
+
+  validation_on_write:
+    rule: "Data quality validation runs on every write"
+    enforcement: "mandatory"
+    timing: "before_persistence"
+
+  validation_on_read:
+    rule: "Skip validation on read (trust stored data)"
+    rationale: "Write-time validation prevents garbage in; read-time is redundant overhead"
+
+---
+
+# Stress Testing Rules
+stress_testing:
+  scenario_definition:
+    required_fields:
+      - "name"
+      - "shocks"
+      - "description"
+      - "date_calibrated"
+    shocks_format:
+      type: "dict"
+      key: "risk_factor_name"
+      value: "shock_magnitude"
+      example:
+        SPX: -0.40     # Equity down 40%
+        VIX: 2.0       # Vol up 200%
+        US10Y: -0.015  # Rates down 150 bps
+
+  shock_magnitude_validation:
+    rule: "Shock magnitudes MUST be reasonable (abs(shock) < 5.0 for most factors)"
+    enforcement: "validation_gate"
+    tolerance: 5.0
+    exception_factors: ["VIX"]  # VIX can have larger shocks
+
+  scenario_completeness:
+    rule: "Scenarios MUST specify all required risk factors"
+    enforcement: "validation_gate"
+    required_factors: ["equity", "rates", "fx"]
+    action_on_missing: "error_or_assume_unchanged"  # Configurable
+
+  linearity_validation:
+    rule: "For linear instruments, 20% shock P&L ≈ 2× 10% shock P&L"
+    tolerance: 0.05  # 5%
+    enforcement: "validation_test"
+    test_name: "test_stress_linearity"
+
+  scenario_storage:
+    format: "yaml"
+    path: "config/scenarios.yaml"
+    version_control: "git"
+    integrity_check: "hash_validation_on_load"
+
+  revaluation_failure_handling:
+    rule: "Extreme shocks may cause pricing failures"
+    enforcement: "graceful_degradation"
+    action: "log_error_and_report_na"
+
+---
+
+# Backtest Reproducibility Rules
+backtest_reproducibility:
+  determinism:
+    rule: "Same backtest config + same data version MUST produce identical results"
+    enforcement: "unit_test"
+    test_name: "test_backtest_reproducibility"
+
+  config_persistence:
+    rule: "Backtest config MUST be persisted with results"
+    fields:
+      - "universe"
+      - "rebalance_freq"
+      - "transaction_costs"
+      - "data_version"
+      - "signal_logic_hash"
+    output_format: "json"
+    output_path: "artifacts/backtest_results/{backtest_id}/config.json"
+
+  random_seed:
+    rule: "Random seed MUST be specified for any stochastic elements"
+    enforcement: "mandatory"
+    default_seed: 42
+    logging: "log_seed_in_config"
+
+  data_version_tracking:
+    rule: "Data version MUST be recorded in backtest results"
+    enforcement: "mandatory"
+    field_name: "data_version"
+
+---
+
+# Risk Calculation Consistency Rules
+risk_calculation:
+  market_data_consistency:
+    rule: "All risk metrics MUST use same market data snapshot (as_of_date)"
+    enforcement: "validation_gate"
+    check_method: "compare_as_of_dates"
+    action_on_mismatch: "reject_calculation"
+    error_type: "MarketDataMismatchError"
+    message: "Portfolio as_of_date {portfolio_date} != market data as_of_date {market_date}"
+
+  valuation_date_alignment:
+    rule: "Valuation date MUST match market data as_of_date"
+    enforcement: "mandatory"
+
+  risk_metric_derivation:
+    rule: "Risk metrics MUST be derived from same valuation run"
+    enforcement: "automatic"
+    rationale: "Ensures consistency across VaR, CVaR, Greeks"
+
+---
+
+# Performance Requirements (as Rules)
+performance:
+  var_computation:
+    max_duration_minutes: 15
+    portfolio_size: 2000
+    enforcement: "performance_test"
+    test_name: "test_var_performance"
+
+  backtest_execution:
+    max_duration_seconds: 60
+    backtest_period_years: 10
+    securities_count: 500
+    enforcement: "performance_test"
+    test_name: "test_backtest_performance"
+
+  data_load:
+    max_duration_seconds: 5
+    rows_count: 1000000
+    enforcement: "performance_test"
+    test_name: "test_data_load_performance"
+
+  optimization_solve:
+    max_duration_seconds: 10
+    securities_count: 500
+    enforcement: "performance_test"
+    test_name: "test_optimization_performance"
+
+---
+
+# Security and Privacy Rules
+security:
+  credential_management:
+    rule: "API keys and credentials MUST NOT be hardcoded in configuration files"
+    enforcement: "code_review_gate"
+    allowed_method: "environment_variables"
+
+  environment_file_exclusion:
+    rule: ".env files MUST be excluded from git via .gitignore"
+    enforcement: "pre_commit_hook"
+
+  file_permissions:
+    rule: "Configuration and model files MUST use restrictive permissions (chmod 600)"
+    enforcement: "deployment_checklist"
+
+  scenario_file_integrity:
+    rule: "Scenario files MUST use integrity checks (hash validation on load)"
+    enforcement: "runtime_check"
+    hash_algorithm: "sha256"
+    action_on_mismatch: "reject_and_alert"
+
+---
+
+# Error Handling Strategy Rules
+error_handling:
+  fail_fast_errors:
+    description: "Errors that MUST halt execution immediately"
+    categories:
+      - "data_quality_failures"
+      - "optimization_infeasibility"
+      - "market_data_staleness"
+      - "configuration_errors"
+    action: "raise_error_and_halt"
+
+  graceful_degradation_errors:
+    description: "Errors that allow continued execution with logging"
+    categories:
+      - "missing_data_for_single_instrument"
+      - "greeks_computation_failure_for_single_position"
+      - "pricing_failure_for_non_critical_instrument"
+    action: "log_warning_and_continue"
+
+  staleness_threshold:
+    rule: "Market data older than 24 hours is considered stale"
+    enforcement: "validation_gate"
+    action_on_stale: "reject_and_error"
+    error_type: "StaleDataError"
+
+---
+
+# Operational Rules
+operational:
+  missing_data_handling:
+    default: "forward_fill"
+    allowed_values: ["forward_fill", "error"]
+    configurable: true
+    config_path: "config/data_handling.yaml"
+
+  disk_usage_monitoring:
+    threshold_pct: 90
+    action_on_exceed: "alert"
+    check_frequency: "daily"
+
+  retention_enforcement:
+    rule: "Data older than 90 days MUST be archived to S3"
+    frequency: "weekly"
+    automated: true
+
+  logging_format:
+    format: "json"
+    required_fields:
+      - "timestamp"
+      - "level"
+      - "component"
+      - "message"
+      - "context"
+    output_path: "logs/{date}.log"
+
+---
+
+# End of Rules File

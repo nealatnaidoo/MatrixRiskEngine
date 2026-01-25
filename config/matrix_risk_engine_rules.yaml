@@ -1,0 +1,290 @@
+# Matrix Risk Engine - Domain Rules
+# Version: 1.0
+# Date: 2026-01-25
+#
+# This file defines domain rules that govern system behavior.
+# Rules are loaded at runtime and enforced by domain services.
+
+version: "1.0"
+
+# =============================================================================
+# Data Versioning Rules
+# =============================================================================
+data_versioning:
+  # Version tag format: vYYYYMMDD_label
+  version_format: "^v\\d{8}_[a-z0-9_]+$"
+
+  # Versions are immutable once written
+  immutable: true
+
+  # Default to latest version if not specified
+  default_to_latest: true
+
+  # Required metadata fields for each version
+  required_metadata:
+    - source
+    - published_date
+
+  # Optional metadata fields
+  optional_metadata:
+    - quality_flags
+    - notes
+    - created_by
+
+# =============================================================================
+# Point-in-Time Correctness Rules
+# =============================================================================
+point_in_time:
+  # Enable point-in-time filtering
+  enabled: true
+
+  # Reject queries with as_of_date in the future
+  reject_future_queries: true
+
+  # Corporate actions only apply if effective_date <= as_of_date
+  corporate_actions:
+    apply_only_before_effective_date: true
+    supported_actions:
+      - split
+      - dividend
+      - spinoff
+
+  # Data visibility rules
+  visibility:
+    # Data only visible after published_date
+    respect_published_date: true
+    # Allow override for backtesting (use with caution)
+    allow_lookahead_override: false
+
+# =============================================================================
+# Data Quality Gates
+# =============================================================================
+data_quality:
+  # Gate: Missing data threshold
+  missing_data:
+    enabled: true
+    max_missing_pct: 0.001  # 0.1%
+    action: reject  # reject | warn | log
+
+  # Gate: Outlier detection
+  outliers:
+    enabled: true
+    sigma_threshold: 5.0
+    action: warn
+    max_outlier_pct: 0.01  # 1%
+
+  # Gate: Negative prices
+  negative_prices:
+    enabled: true
+    action: reject
+    exceptions:
+      - spreads
+      - yields
+      - futures_basis
+
+  # Gate: Zero volume
+  zero_volume:
+    enabled: true
+    action: warn
+    max_zero_volume_pct: 0.05  # 5%
+
+  # Gate: Stale data
+  stale_data:
+    enabled: true
+    max_staleness_hours: 24
+    action: warn
+
+  # Gate: Data gaps
+  data_gaps:
+    enabled: true
+    max_gap_days: 5  # Excluding weekends/holidays
+    action: warn
+
+# =============================================================================
+# Backtest Rules
+# =============================================================================
+backtest:
+  # Reproducibility requirements
+  reproducibility:
+    # Log random seed for stochastic elements
+    log_random_seed: true
+    # Persist config with results
+    persist_config: true
+    # Version lock data
+    require_data_version: true
+
+  # Transaction cost defaults
+  transaction_costs:
+    default_spread_bps: 5
+    default_commission_bps: 2
+    min_trade_value: 100  # Minimum trade value in currency
+
+  # Rebalancing options
+  rebalancing:
+    allowed_frequencies:
+      - daily
+      - weekly
+      - monthly
+      - quarterly
+    default_frequency: monthly
+
+  # Performance requirements
+  performance:
+    max_runtime_seconds: 60  # For 10 years, 500 securities
+    warn_runtime_seconds: 30
+
+# =============================================================================
+# Risk Calculation Rules
+# =============================================================================
+risk:
+  # VaR calculation rules
+  var:
+    default_confidence_levels:
+      - 0.95
+      - 0.99
+    default_window_days: 250  # ~1 year
+    methods:
+      - historical
+      - parametric
+    default_method: historical
+
+  # CVaR (Expected Shortfall) rules
+  cvar:
+    # CVaR must be >= VaR (more extreme)
+    enforce_cvar_gte_var: true
+
+  # Greeks computation rules
+  greeks:
+    # Maximum deviation from analytical formulas
+    max_deviation_pct: 1.0
+    # Handle failures gracefully
+    on_failure: log_and_continue
+
+  # Performance requirements
+  performance:
+    max_var_runtime_minutes: 15
+    max_greeks_runtime_minutes: 5
+
+# =============================================================================
+# Optimization Rules
+# =============================================================================
+optimization:
+  # Solver configuration
+  solver:
+    timeout_seconds: 30
+    preferred_solver: cvxpy
+    fallback_solver: scipy
+
+  # Constraint validation
+  constraints:
+    # Reject infeasible solutions
+    reject_infeasible: true
+    # No "best effort" partial solutions
+    no_partial_solutions: true
+    # Validate all constraints post-optimization
+    post_validation: true
+
+  # Risk model validation
+  risk_model:
+    # Covariance matrix must be positive semi-definite
+    require_psd: true
+    # Minimum eigenvalue threshold
+    min_eigenvalue: 1e-10
+
+# =============================================================================
+# Stress Testing Rules
+# =============================================================================
+stress_testing:
+  # Scenario validation
+  scenarios:
+    # Maximum shock magnitude (500%)
+    max_shock_magnitude: 5.0
+    # Required risk factors for completeness
+    required_factors:
+      - equity
+      - rates
+      - volatility
+
+  # Linearity validation
+  linearity:
+    enabled: true
+    tolerance: 0.05  # 5% tolerance for 2x shock test
+
+  # Pricing failures
+  on_pricing_failure: report_na
+
+# =============================================================================
+# Reporting Rules
+# =============================================================================
+reporting:
+  # Tearsheet requirements
+  tearsheet:
+    min_metrics: 50
+    required_metrics:
+      - sharpe_ratio
+      - sortino_ratio
+      - max_drawdown
+      - cagr
+      - volatility
+      - calmar_ratio
+      - win_rate
+    output_format: html
+
+  # Risk report requirements
+  risk_report:
+    required_sections:
+      - var_summary
+      - cvar_summary
+      - greeks_by_position
+      - portfolio_aggregates
+    output_formats:
+      - html
+      - pdf
+
+# =============================================================================
+# Logging and Audit Rules
+# =============================================================================
+logging:
+  # Structured JSON logging
+  format: json
+
+  # Log levels by category
+  levels:
+    data_operations: info
+    risk_calculations: info
+    optimization: info
+    quality_gates: warning
+
+  # Audit trail requirements
+  audit:
+    # Log all risk calculations
+    log_risk_calculations: true
+    # Include timestamps
+    include_timestamps: true
+    # Log user/session info
+    log_session: true
+
+# =============================================================================
+# Security Rules
+# =============================================================================
+security:
+  # Credential handling
+  credentials:
+    # Never hardcode in config
+    no_hardcoded_secrets: true
+    # Use environment variables
+    use_env_vars: true
+    # Exclude from git
+    gitignore_env_files: true
+
+  # File permissions
+  file_permissions:
+    config_files: "600"  # Owner read/write only
+    data_files: "644"    # Owner read/write, others read
+
+  # Scenario file integrity
+  scenario_integrity:
+    # Validate hash on load
+    validate_hash: true
+    # Store hashes in manifest
+    hash_manifest: "config/scenario_hashes.yaml"
