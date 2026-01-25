@@ -271,25 +271,41 @@ class OREAdapter:
 
         Args:
             portfolio: Portfolio to stress test
-            market_data: Base market data
+            market_data: Base market data (used for symbol matching)
             scenarios: List of stress scenarios to apply
 
         Returns:
             DataFrame with scenario results
         """
-        # Calculate base NPV
-        base_npv = self._calculate_npv(portfolio, market_data)
+        # Portfolio NAV is the base value
+        base_npv = portfolio.nav
 
         results = []
 
         for scenario in scenarios:
-            # Apply shocks to market data
-            stressed_data = self._apply_shocks(market_data, scenario)
-
-            # Calculate stressed NPV
             try:
-                stressed_npv = self._calculate_npv(portfolio, stressed_data)
-                pnl = stressed_npv - base_npv
+                # Calculate P&L based on weights and NAV
+                # pnl = NAV * sum(weight * shock for each position)
+                pnl = 0.0
+
+                for symbol, weight in portfolio.weights.items():
+                    # Check for direct symbol shock
+                    if symbol in scenario.shocks:
+                        shock = scenario.shocks[symbol]
+                        pnl += base_npv * weight * shock
+                    # Check for equity_all shock (applies to all positions)
+                    elif "equity_all" in scenario.shocks:
+                        shock = scenario.shocks["equity_all"]
+                        pnl += base_npv * weight * shock
+                    # Check for sector shocks
+                    elif "tech_sector" in scenario.shocks and symbol in [
+                        "AAPL", "GOOGL", "MSFT", "AMZN", "META", "NVDA", "TSLA"
+                    ]:
+                        shock = scenario.shocks["tech_sector"]
+                        pnl += base_npv * weight * shock
+                    # No applicable shock - no change
+
+                stressed_npv = base_npv + pnl
                 pct_change = pnl / base_npv if base_npv != 0 else 0.0
 
                 results.append({
@@ -355,14 +371,37 @@ class OREAdapter:
         self,
         portfolio: "Portfolio",
         market_data: pd.DataFrame,
+        base_prices: pd.Series | None = None,
     ) -> float:
-        """Calculate portfolio NPV from market data."""
+        """Calculate portfolio NPV from market data.
+
+        Note: Portfolio positions are in dollar terms, so we calculate
+        returns relative to base prices and apply to position values.
+
+        Args:
+            portfolio: Portfolio with positions in dollar terms
+            market_data: Price data
+            base_prices: Base prices for return calculation (optional)
+
+        Returns:
+            Portfolio NPV
+        """
+        if base_prices is None:
+            # Use portfolio NAV directly if no base for comparison
+            return portfolio.nav
+
         npv = 0.0
+        current_prices = market_data.iloc[-1]
 
         for symbol, position in portfolio.positions.items():
-            if symbol in market_data.columns:
-                price = market_data[symbol].iloc[-1]
-                npv += position * price
+            if symbol in market_data.columns and symbol in base_prices.index:
+                # Calculate return relative to base
+                price_return = (current_prices[symbol] / base_prices[symbol]) - 1
+                # Apply return to position value
+                npv += position * (1 + price_return)
+            else:
+                # No price data, assume no change
+                npv += position
 
         return npv
 
