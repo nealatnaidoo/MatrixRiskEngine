@@ -71,10 +71,11 @@ def backtest_var_model(
     print(f"Running VaR backtest...")
     print(f"  Confidence: {confidence_level:.0%}")
     print(f"  Lookback: {lookback_days} days")
-    print(f"  Test period: {dates[lookback_days].date()} to {dates[-2].date()}")
+    print(f"  Test period: {dates[lookback_days + 1].date()} to {dates[-2].date()}")
     print()
 
-    for i in range(lookback_days, len(dates) - 1):
+    # Start at lookback_days + 1 to have enough data for returns calculation
+    for i in range(lookback_days + 1, len(dates) - 1):
         test_date = dates[i]
 
         # Create equal-weight portfolio
@@ -89,7 +90,8 @@ def backtest_var_model(
         )
 
         # Calculate VaR using historical data up to test_date
-        historical_data = market_data.iloc[i - lookback_days : i]
+        # Note: +1 because pct_change() drops one row
+        historical_data = market_data.iloc[i - lookback_days - 1 : i]
 
         var_result = risk_adapter.calculate_var(
             portfolio=portfolio,
@@ -122,8 +124,8 @@ def backtest_var_model(
         })
 
         # Progress indicator
-        if (i - lookback_days) % 50 == 0:
-            print(f"  Processed {i - lookback_days + 1} / {len(dates) - lookback_days - 1} days")
+        if (i - lookback_days - 1) % 50 == 0:
+            print(f"  Processed {i - lookback_days} / {len(dates) - lookback_days - 2} days")
 
     results_df = pd.DataFrame(results)
 
