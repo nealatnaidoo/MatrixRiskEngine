@@ -1,0 +1,1465 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Matrix Risk Engine — Enterprise Portfolio Risk Analytics</title>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600&family=Space+Grotesk:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-primary: #0a0a0f;
+      --bg-secondary: #12121a;
+      --bg-tertiary: #1a1a25;
+      --bg-card: #16161f;
+      --border-subtle: rgba(255, 255, 255, 0.06);
+      --border-glow: rgba(99, 255, 218, 0.15);
+      --text-primary: #e8e8ed;
+      --text-secondary: #8b8b96;
+      --text-muted: #5a5a66;
+      --accent-cyan: #63ffd8;
+      --accent-purple: #a78bfa;
+      --accent-orange: #fb923c;
+      --accent-pink: #f472b6;
+      --accent-blue: #60a5fa;
+      --accent-green: #4ade80;
+      --accent-red: #f87171;
+      --accent-gold: #fbbf24;
+      --glow-cyan: 0 0 40px rgba(99, 255, 218, 0.15);
+      --glow-purple: 0 0 40px rgba(167, 139, 250, 0.15);
+      --glow-gold: 0 0 40px rgba(251, 191, 36, 0.15);
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    html {
+      scroll-behavior: smooth;
+      scroll-snap-type: y mandatory;
+    }
+
+    body {
+      font-family: 'Space Grotesk', sans-serif;
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      overflow-x: hidden;
+    }
+
+    /* Animated background */
+    .bg-grid {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-image:
+        linear-gradient(rgba(99, 255, 218, 0.02) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(99, 255, 218, 0.02) 1px, transparent 1px);
+      background-size: 60px 60px;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .bg-gradient {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background:
+        radial-gradient(ellipse 80% 50% at 50% -20%, rgba(99, 255, 218, 0.08), transparent),
+        radial-gradient(ellipse 60% 40% at 100% 50%, rgba(167, 139, 250, 0.05), transparent),
+        radial-gradient(ellipse 60% 40% at 0% 80%, rgba(251, 191, 36, 0.04), transparent);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* Floating particles */
+    .particles {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      pointer-events: none;
+      z-index: 1;
+      overflow: hidden;
+    }
+
+    .particle {
+      position: absolute;
+      width: 4px;
+      height: 4px;
+      background: var(--accent-cyan);
+      border-radius: 50%;
+      opacity: 0.3;
+      animation: float 20s infinite linear;
+    }
+
+    .particle:nth-child(2) { left: 20%; animation-delay: -5s; background: var(--accent-purple); }
+    .particle:nth-child(3) { left: 40%; animation-delay: -10s; }
+    .particle:nth-child(4) { left: 60%; animation-delay: -15s; background: var(--accent-gold); }
+    .particle:nth-child(5) { left: 80%; animation-delay: -3s; background: var(--accent-purple); }
+    .particle:nth-child(6) { left: 90%; animation-delay: -8s; }
+
+    @keyframes float {
+      0% { transform: translateY(100vh) rotate(0deg); opacity: 0; }
+      10% { opacity: 0.3; }
+      90% { opacity: 0.3; }
+      100% { transform: translateY(-100vh) rotate(720deg); opacity: 0; }
+    }
+
+    /* Slide sections */
+    .slide {
+      min-height: 100vh;
+      scroll-snap-align: start;
+      position: relative;
+      z-index: 10;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      padding: 60px 40px;
+    }
+
+    .slide-content {
+      max-width: 1400px;
+      margin: 0 auto;
+      width: 100%;
+    }
+
+    /* Navigation dots */
+    .nav-dots {
+      position: fixed;
+      right: 30px;
+      top: 50%;
+      transform: translateY(-50%);
+      z-index: 100;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .nav-dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: var(--bg-tertiary);
+      border: 2px solid var(--border-subtle);
+      cursor: pointer;
+      transition: all 0.3s ease;
+    }
+
+    .nav-dot:hover, .nav-dot.active {
+      background: var(--accent-cyan);
+      border-color: var(--accent-cyan);
+      box-shadow: var(--glow-cyan);
+    }
+
+    .nav-dot-label {
+      position: absolute;
+      right: 24px;
+      background: var(--bg-card);
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-size: 0.75rem;
+      white-space: nowrap;
+      opacity: 0;
+      transform: translateX(10px);
+      transition: all 0.2s ease;
+      pointer-events: none;
+    }
+
+    .nav-dot:hover .nav-dot-label {
+      opacity: 1;
+      transform: translateX(0);
+    }
+
+    /* Hero slide */
+    .hero {
+      text-align: center;
+    }
+
+    .hero-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 20px;
+      background: linear-gradient(135deg, rgba(99, 255, 218, 0.1), rgba(167, 139, 250, 0.1));
+      border: 1px solid rgba(99, 255, 218, 0.2);
+      border-radius: 100px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px;
+      color: var(--accent-cyan);
+      letter-spacing: 1px;
+      margin-bottom: 32px;
+      animation: fadeInDown 0.8s ease-out;
+    }
+
+    .hero-badge::before {
+      content: '';
+      width: 8px;
+      height: 8px;
+      background: var(--accent-cyan);
+      border-radius: 50%;
+      animation: pulse 2s infinite;
+    }
+
+    .hero h1 {
+      font-size: clamp(3rem, 8vw, 6rem);
+      font-weight: 700;
+      letter-spacing: -2px;
+      margin-bottom: 24px;
+      background: linear-gradient(135deg, var(--text-primary) 0%, var(--accent-cyan) 50%, var(--accent-purple) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      animation: fadeInUp 1s ease-out 0.2s both;
+    }
+
+    .hero-subtitle {
+      font-size: 1.4rem;
+      color: var(--text-secondary);
+      max-width: 700px;
+      margin: 0 auto 48px;
+      line-height: 1.7;
+      animation: fadeInUp 1s ease-out 0.4s both;
+    }
+
+    .hero-stats {
+      display: flex;
+      justify-content: center;
+      gap: 60px;
+      animation: fadeInUp 1s ease-out 0.6s both;
+    }
+
+    .hero-stat {
+      text-align: center;
+    }
+
+    .hero-stat-value {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 2.5rem;
+      font-weight: 600;
+      background: linear-gradient(135deg, var(--accent-cyan), var(--accent-purple));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .hero-stat-label {
+      font-size: 0.9rem;
+      color: var(--text-muted);
+      margin-top: 8px;
+    }
+
+    .scroll-hint {
+      position: absolute;
+      bottom: 40px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+      color: var(--text-muted);
+      font-size: 0.8rem;
+      animation: bounce 2s infinite;
+    }
+
+    .scroll-hint svg {
+      width: 24px;
+      height: 24px;
+      stroke: var(--accent-cyan);
+    }
+
+    @keyframes bounce {
+      0%, 100% { transform: translateX(-50%) translateY(0); }
+      50% { transform: translateX(-50%) translateY(10px); }
+    }
+
+    /* Problem slide */
+    .problem-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 60px;
+      align-items: center;
+    }
+
+    .problem-text h2 {
+      font-size: 2.5rem;
+      margin-bottom: 24px;
+      background: linear-gradient(135deg, var(--accent-red), var(--accent-orange));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .problem-text p {
+      color: var(--text-secondary);
+      font-size: 1.1rem;
+      line-height: 1.8;
+      margin-bottom: 32px;
+    }
+
+    .pain-points {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .pain-point {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      padding: 16px 20px;
+      background: rgba(248, 113, 113, 0.05);
+      border: 1px solid rgba(248, 113, 113, 0.15);
+      border-radius: 12px;
+      transition: all 0.3s ease;
+    }
+
+    .pain-point:hover {
+      background: rgba(248, 113, 113, 0.1);
+      transform: translateX(8px);
+    }
+
+    .pain-point-icon {
+      font-size: 1.5rem;
+    }
+
+    .pain-point-text {
+      color: var(--text-secondary);
+      font-size: 0.95rem;
+    }
+
+    .problem-visual {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+
+    .chaos-diagram {
+      width: 100%;
+      max-width: 400px;
+      aspect-ratio: 1;
+      position: relative;
+    }
+
+    .chaos-node {
+      position: absolute;
+      padding: 12px 20px;
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      border-radius: 8px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.8rem;
+      color: var(--text-secondary);
+      animation: chaosFloat 4s infinite ease-in-out;
+    }
+
+    .chaos-node:nth-child(1) { top: 10%; left: 10%; animation-delay: 0s; }
+    .chaos-node:nth-child(2) { top: 5%; right: 15%; animation-delay: 0.5s; }
+    .chaos-node:nth-child(3) { top: 40%; left: 5%; animation-delay: 1s; }
+    .chaos-node:nth-child(4) { top: 35%; right: 10%; animation-delay: 1.5s; }
+    .chaos-node:nth-child(5) { bottom: 25%; left: 15%; animation-delay: 2s; }
+    .chaos-node:nth-child(6) { bottom: 20%; right: 5%; animation-delay: 2.5s; }
+    .chaos-node:nth-child(7) { bottom: 5%; left: 30%; animation-delay: 3s; }
+
+    @keyframes chaosFloat {
+      0%, 100% { transform: translate(0, 0) rotate(0deg); }
+      25% { transform: translate(5px, -5px) rotate(2deg); }
+      50% { transform: translate(-3px, 8px) rotate(-1deg); }
+      75% { transform: translate(4px, 3px) rotate(1deg); }
+    }
+
+    /* Architecture slide */
+    .arch-container {
+      text-align: center;
+    }
+
+    .arch-container h2 {
+      font-size: 2.5rem;
+      margin-bottom: 16px;
+      background: linear-gradient(135deg, var(--accent-cyan), var(--accent-purple));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .arch-container > p {
+      color: var(--text-secondary);
+      font-size: 1.1rem;
+      margin-bottom: 48px;
+    }
+
+    .hex-diagram {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 20px;
+      flex-wrap: wrap;
+      margin-bottom: 48px;
+    }
+
+    .hex-layer {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .hex-label {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.7rem;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    .hex-box {
+      padding: 24px 32px;
+      background: var(--bg-card);
+      border: 2px solid;
+      border-radius: 16px;
+      min-width: 180px;
+      transition: all 0.3s ease;
+    }
+
+    .hex-box:hover {
+      transform: translateY(-4px);
+    }
+
+    .hex-box.adapters {
+      border-color: rgba(251, 146, 60, 0.3);
+    }
+
+    .hex-box.adapters:hover {
+      box-shadow: 0 0 30px rgba(251, 146, 60, 0.2);
+    }
+
+    .hex-box.ports {
+      border-color: rgba(167, 139, 250, 0.3);
+    }
+
+    .hex-box.ports:hover {
+      box-shadow: 0 0 30px rgba(167, 139, 250, 0.2);
+    }
+
+    .hex-box.core {
+      border-color: rgba(99, 255, 218, 0.3);
+      background: linear-gradient(135deg, rgba(99, 255, 218, 0.05), rgba(167, 139, 250, 0.05));
+    }
+
+    .hex-box.core:hover {
+      box-shadow: 0 0 30px rgba(99, 255, 218, 0.2);
+    }
+
+    .hex-box h4 {
+      font-size: 1rem;
+      margin-bottom: 8px;
+    }
+
+    .hex-box ul {
+      list-style: none;
+      font-size: 0.85rem;
+      color: var(--text-secondary);
+    }
+
+    .hex-box li {
+      padding: 4px 0;
+    }
+
+    .hex-arrow {
+      font-size: 2rem;
+      color: var(--text-muted);
+    }
+
+    .arch-benefits {
+      display: flex;
+      justify-content: center;
+      gap: 40px;
+      flex-wrap: wrap;
+    }
+
+    .arch-benefit {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 20px;
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      border-radius: 100px;
+      font-size: 0.9rem;
+      color: var(--text-secondary);
+    }
+
+    .arch-benefit-icon {
+      color: var(--accent-cyan);
+    }
+
+    /* Features slide */
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 24px;
+    }
+
+    .feature-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      border-radius: 20px;
+      padding: 32px;
+      transition: all 0.4s ease;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .feature-card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 3px;
+      background: linear-gradient(90deg, var(--accent-cyan), var(--accent-purple));
+      opacity: 0;
+      transition: opacity 0.3s ease;
+    }
+
+    .feature-card:hover {
+      transform: translateY(-8px);
+      border-color: var(--border-glow);
+      box-shadow: var(--glow-cyan);
+    }
+
+    .feature-card:hover::before {
+      opacity: 1;
+    }
+
+    .feature-icon {
+      width: 56px;
+      height: 56px;
+      border-radius: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.5rem;
+      margin-bottom: 20px;
+    }
+
+    .feature-card h3 {
+      font-size: 1.2rem;
+      margin-bottom: 12px;
+    }
+
+    .feature-card p {
+      color: var(--text-secondary);
+      font-size: 0.9rem;
+      line-height: 1.6;
+      margin-bottom: 16px;
+    }
+
+    .feature-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .feature-tag {
+      padding: 4px 10px;
+      border-radius: 6px;
+      font-size: 0.75rem;
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    .tag-cyan {
+      background: rgba(99, 255, 218, 0.1);
+      color: var(--accent-cyan);
+    }
+
+    .tag-purple {
+      background: rgba(167, 139, 250, 0.1);
+      color: var(--accent-purple);
+    }
+
+    .tag-orange {
+      background: rgba(251, 146, 60, 0.1);
+      color: var(--accent-orange);
+    }
+
+    .tag-blue {
+      background: rgba(96, 165, 250, 0.1);
+      color: var(--accent-blue);
+    }
+
+    .tag-green {
+      background: rgba(74, 222, 128, 0.1);
+      color: var(--accent-green);
+    }
+
+    /* Integrations slide */
+    .integrations-header {
+      text-align: center;
+      margin-bottom: 48px;
+    }
+
+    .integrations-header h2 {
+      font-size: 2.5rem;
+      margin-bottom: 16px;
+      background: linear-gradient(135deg, var(--accent-gold), var(--accent-orange));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .integrations-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 24px;
+      margin-bottom: 48px;
+    }
+
+    .integration-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      border-radius: 16px;
+      padding: 28px;
+      text-align: center;
+      transition: all 0.3s ease;
+    }
+
+    .integration-card:hover {
+      border-color: var(--accent-gold);
+      box-shadow: var(--glow-gold);
+      transform: scale(1.02);
+    }
+
+    .integration-logo {
+      width: 64px;
+      height: 64px;
+      border-radius: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.8rem;
+      margin: 0 auto 16px;
+      background: var(--bg-tertiary);
+    }
+
+    .integration-card h4 {
+      font-size: 1.1rem;
+      margin-bottom: 8px;
+    }
+
+    .integration-card p {
+      color: var(--text-muted);
+      font-size: 0.85rem;
+    }
+
+    .integration-type {
+      display: inline-block;
+      margin-top: 12px;
+      padding: 4px 12px;
+      background: rgba(251, 191, 36, 0.1);
+      border-radius: 100px;
+      font-size: 0.7rem;
+      color: var(--accent-gold);
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    /* Use cases slide */
+    .usecases-container h2 {
+      text-align: center;
+      font-size: 2.5rem;
+      margin-bottom: 48px;
+      background: linear-gradient(135deg, var(--accent-blue), var(--accent-cyan));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .usecase-cards {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 32px;
+    }
+
+    .usecase-card {
+      background: linear-gradient(135deg, var(--bg-card), var(--bg-secondary));
+      border: 1px solid var(--border-subtle);
+      border-radius: 24px;
+      padding: 40px;
+      transition: all 0.4s ease;
+    }
+
+    .usecase-card:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+    }
+
+    .usecase-header {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      margin-bottom: 20px;
+    }
+
+    .usecase-icon {
+      width: 48px;
+      height: 48px;
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.4rem;
+    }
+
+    .usecase-card h3 {
+      font-size: 1.3rem;
+    }
+
+    .usecase-card > p {
+      color: var(--text-secondary);
+      font-size: 0.95rem;
+      line-height: 1.7;
+      margin-bottom: 24px;
+    }
+
+    .usecase-metrics {
+      display: flex;
+      gap: 24px;
+    }
+
+    .usecase-metric {
+      flex: 1;
+      padding: 16px;
+      background: var(--bg-primary);
+      border-radius: 12px;
+      text-align: center;
+    }
+
+    .usecase-metric-value {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 1.5rem;
+      font-weight: 600;
+      color: var(--accent-cyan);
+    }
+
+    .usecase-metric-label {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      margin-top: 4px;
+    }
+
+    /* CTA slide */
+    .cta-container {
+      text-align: center;
+    }
+
+    .cta-container h2 {
+      font-size: 3rem;
+      margin-bottom: 24px;
+      background: linear-gradient(135deg, var(--text-primary), var(--accent-cyan));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .cta-container > p {
+      color: var(--text-secondary);
+      font-size: 1.2rem;
+      margin-bottom: 48px;
+      max-width: 600px;
+      margin-left: auto;
+      margin-right: auto;
+    }
+
+    .cta-code {
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      border-radius: 16px;
+      padding: 32px 48px;
+      display: inline-block;
+      margin-bottom: 48px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 1.1rem;
+    }
+
+    .cta-code .comment {
+      color: var(--text-muted);
+    }
+
+    .cta-code .command {
+      color: var(--accent-cyan);
+    }
+
+    .cta-links {
+      display: flex;
+      justify-content: center;
+      gap: 24px;
+    }
+
+    .cta-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      padding: 16px 32px;
+      border-radius: 12px;
+      font-size: 1rem;
+      font-weight: 500;
+      text-decoration: none;
+      transition: all 0.3s ease;
+    }
+
+    .cta-link.primary {
+      background: linear-gradient(135deg, var(--accent-cyan), var(--accent-purple));
+      color: var(--bg-primary);
+    }
+
+    .cta-link.primary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 10px 40px rgba(99, 255, 218, 0.3);
+    }
+
+    .cta-link.secondary {
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      color: var(--text-primary);
+    }
+
+    .cta-link.secondary:hover {
+      border-color: var(--accent-cyan);
+    }
+
+    .tech-stack {
+      margin-top: 64px;
+      padding-top: 48px;
+      border-top: 1px solid var(--border-subtle);
+    }
+
+    .tech-stack h4 {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      margin-bottom: 24px;
+    }
+
+    .tech-icons {
+      display: flex;
+      justify-content: center;
+      gap: 32px;
+      flex-wrap: wrap;
+    }
+
+    .tech-icon {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+      color: var(--text-secondary);
+      font-size: 0.8rem;
+    }
+
+    .tech-icon span:first-child {
+      font-size: 2rem;
+    }
+
+    /* Animations */
+    @keyframes fadeInUp {
+      from { opacity: 0; transform: translateY(30px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    @keyframes fadeInDown {
+      from { opacity: 0; transform: translateY(-30px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; box-shadow: 0 0 20px rgba(99, 255, 218, 0.4); }
+      50% { opacity: 0.7; box-shadow: 0 0 40px rgba(99, 255, 218, 0.2); }
+    }
+
+    /* Slide animations */
+    .slide-animate {
+      opacity: 0;
+      transform: translateY(40px);
+      transition: all 0.8s ease-out;
+    }
+
+    .slide-animate.visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    /* Responsive */
+    @media (max-width: 1024px) {
+      .problem-grid,
+      .usecase-cards {
+        grid-template-columns: 1fr;
+      }
+
+      .features-grid,
+      .integrations-grid {
+        grid-template-columns: repeat(2, 1fr);
+      }
+
+      .hero-stats {
+        flex-wrap: wrap;
+        gap: 30px;
+      }
+
+      .hex-diagram {
+        flex-direction: column;
+      }
+
+      .hex-arrow {
+        transform: rotate(90deg);
+      }
+    }
+
+    @media (max-width: 768px) {
+      .slide {
+        padding: 40px 20px;
+      }
+
+      .features-grid,
+      .integrations-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .nav-dots {
+        display: none;
+      }
+
+      .cta-links {
+        flex-direction: column;
+        align-items: center;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="bg-grid"></div>
+  <div class="bg-gradient"></div>
+
+  <div class="particles">
+    <div class="particle"></div>
+    <div class="particle"></div>
+    <div class="particle"></div>
+    <div class="particle"></div>
+    <div class="particle"></div>
+    <div class="particle"></div>
+  </div>
+
+  <!-- Navigation dots -->
+  <nav class="nav-dots">
+    <div class="nav-dot active" data-slide="0">
+      <span class="nav-dot-label">Home</span>
+    </div>
+    <div class="nav-dot" data-slide="1">
+      <span class="nav-dot-label">Problem</span>
+    </div>
+    <div class="nav-dot" data-slide="2">
+      <span class="nav-dot-label">Architecture</span>
+    </div>
+    <div class="nav-dot" data-slide="3">
+      <span class="nav-dot-label">Features</span>
+    </div>
+    <div class="nav-dot" data-slide="4">
+      <span class="nav-dot-label">Integrations</span>
+    </div>
+    <div class="nav-dot" data-slide="5">
+      <span class="nav-dot-label">Use Cases</span>
+    </div>
+    <div class="nav-dot" data-slide="6">
+      <span class="nav-dot-label">Get Started</span>
+    </div>
+  </nav>
+
+  <!-- Slide 1: Hero -->
+  <section class="slide hero" id="slide-0">
+    <div class="slide-content">
+      <div class="hero-badge">OPEN SOURCE RISK ANALYTICS</div>
+      <h1>Matrix Risk Engine</h1>
+      <p class="hero-subtitle">
+        Enterprise-grade portfolio risk analytics built on Open Risk Engine.
+        VaR, CVaR, Greeks, and stress testing with clean hexagonal architecture.
+      </p>
+      <div class="hero-stats">
+        <div class="hero-stat">
+          <div class="hero-stat-value">34K+</div>
+          <div class="hero-stat-label">Lines of Code</div>
+        </div>
+        <div class="hero-stat">
+          <div class="hero-stat-value">245</div>
+          <div class="hero-stat-label">Tests Passing</div>
+        </div>
+        <div class="hero-stat">
+          <div class="hero-stat-value">6</div>
+          <div class="hero-stat-label">Adapters</div>
+        </div>
+        <div class="hero-stat">
+          <div class="hero-stat-value">5</div>
+          <div class="hero-stat-label">Risk Metrics</div>
+        </div>
+      </div>
+    </div>
+    <div class="scroll-hint">
+      <span>Scroll to explore</span>
+      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M19 14l-7 7m0 0l-7-7m7 7V3" />
+      </svg>
+    </div>
+  </section>
+
+  <!-- Slide 2: Problem -->
+  <section class="slide" id="slide-1">
+    <div class="slide-content slide-animate">
+      <div class="problem-grid">
+        <div class="problem-text">
+          <h2>The Risk Management Challenge</h2>
+          <p>
+            Traditional risk systems are monolithic, tightly coupled, and impossible to test.
+            C++ libraries require complex builds. Excel spreadsheets don't scale.
+            And when regulations change, you're rewriting everything.
+          </p>
+          <div class="pain-points">
+            <div class="pain-point">
+              <span class="pain-point-icon">🔗</span>
+              <span class="pain-point-text">Tight coupling to specific data sources and vendors</span>
+            </div>
+            <div class="pain-point">
+              <span class="pain-point-icon">🧪</span>
+              <span class="pain-point-text">Can't test without full production environment</span>
+            </div>
+            <div class="pain-point">
+              <span class="pain-point-icon">⚙️</span>
+              <span class="pain-point-text">C++ build complexity blocks rapid iteration</span>
+            </div>
+            <div class="pain-point">
+              <span class="pain-point-icon">📊</span>
+              <span class="pain-point-text">Excel models don't scale to enterprise portfolios</span>
+            </div>
+            <div class="pain-point">
+              <span class="pain-point-icon">🔄</span>
+              <span class="pain-point-text">Regulatory changes require complete rewrites</span>
+            </div>
+          </div>
+        </div>
+        <div class="problem-visual">
+          <div class="chaos-diagram">
+            <div class="chaos-node">Excel VBA</div>
+            <div class="chaos-node">Bloomberg API</div>
+            <div class="chaos-node">Oracle DB</div>
+            <div class="chaos-node">C++ Libs</div>
+            <div class="chaos-node">Python Scripts</div>
+            <div class="chaos-node">Manual Reports</div>
+            <div class="chaos-node">Legacy COBOL</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Slide 3: Architecture -->
+  <section class="slide" id="slide-2">
+    <div class="slide-content slide-animate">
+      <div class="arch-container">
+        <h2>Hexagonal Architecture</h2>
+        <p>Clean separation. Testable core. Swappable adapters.</p>
+
+        <div class="hex-diagram">
+          <div class="hex-layer">
+            <span class="hex-label">External</span>
+            <div class="hex-box adapters">
+              <h4 style="color: var(--accent-orange);">Adapters</h4>
+              <ul>
+                <li>OREAdapter</li>
+                <li>ArcticDBAdapter</li>
+                <li>VectorBTAdapter</li>
+                <li>QuantStatsAdapter</li>
+              </ul>
+            </div>
+          </div>
+
+          <span class="hex-arrow">→</span>
+
+          <div class="hex-layer">
+            <span class="hex-label">Boundaries</span>
+            <div class="hex-box ports">
+              <h4 style="color: var(--accent-purple);">Ports</h4>
+              <ul>
+                <li>RiskPort</li>
+                <li>DataPort</li>
+                <li>BacktestPort</li>
+                <li>ReportPort</li>
+              </ul>
+            </div>
+          </div>
+
+          <span class="hex-arrow">→</span>
+
+          <div class="hex-layer">
+            <span class="hex-label">Pure Business Logic</span>
+            <div class="hex-box core">
+              <h4 style="color: var(--accent-cyan);">Core Domain</h4>
+              <ul>
+                <li>Portfolio</li>
+                <li>RiskMetrics</li>
+                <li>StressScenario</li>
+                <li>Services</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
+        <div class="arch-benefits">
+          <div class="arch-benefit">
+            <span class="arch-benefit-icon">✓</span>
+            Test without C++ dependencies
+          </div>
+          <div class="arch-benefit">
+            <span class="arch-benefit-icon">✓</span>
+            Swap data sources in minutes
+          </div>
+          <div class="arch-benefit">
+            <span class="arch-benefit-icon">✓</span>
+            Core logic never changes
+          </div>
+          <div class="arch-benefit">
+            <span class="arch-benefit-icon">✓</span>
+            Add new integrations easily
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Slide 4: Features -->
+  <section class="slide" id="slide-3">
+    <div class="slide-content slide-animate">
+      <div class="features-grid">
+        <div class="feature-card">
+          <div class="feature-icon" style="background: rgba(99, 255, 218, 0.1);">📉</div>
+          <h3>Value at Risk (VaR)</h3>
+          <p>Historical simulation and parametric VaR at multiple confidence levels. Kupiec-validated.</p>
+          <div class="feature-tags">
+            <span class="feature-tag tag-cyan">Historical</span>
+            <span class="feature-tag tag-cyan">Parametric</span>
+            <span class="feature-tag tag-purple">95% / 99%</span>
+          </div>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-icon" style="background: rgba(167, 139, 250, 0.1);">📊</div>
+          <h3>Expected Shortfall (CVaR)</h3>
+          <p>Conditional VaR for tail risk. Know what happens in the worst 1% of scenarios.</p>
+          <div class="feature-tags">
+            <span class="feature-tag tag-purple">Tail Risk</span>
+            <span class="feature-tag tag-purple">CVaR/VaR Ratio</span>
+          </div>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-icon" style="background: rgba(251, 146, 60, 0.1);">Δ</div>
+          <h3>Greeks Computation</h3>
+          <p>Delta, Gamma, Vega, Theta, Rho. Plus Duration and Convexity for fixed income.</p>
+          <div class="feature-tags">
+            <span class="feature-tag tag-orange">Delta</span>
+            <span class="feature-tag tag-orange">Gamma</span>
+            <span class="feature-tag tag-orange">Vega</span>
+          </div>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-icon" style="background: rgba(248, 113, 113, 0.1);">⚡</div>
+          <h3>Stress Testing</h3>
+          <p>Pre-built scenarios: 2008 Crisis, COVID Crash, Black Monday. Or define your own.</p>
+          <div class="feature-tags">
+            <span class="feature-tag tag-cyan">7 Historical Events</span>
+            <span class="feature-tag tag-blue">Custom Shocks</span>
+          </div>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-icon" style="background: rgba(74, 222, 128, 0.1);">🔄</div>
+          <h3>Backtesting Engine</h3>
+          <p>Validate strategies with transaction costs, rebalancing frequencies, and performance metrics.</p>
+          <div class="feature-tags">
+            <span class="feature-tag tag-green">VectorBT</span>
+            <span class="feature-tag tag-green">QuantStats</span>
+          </div>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-icon" style="background: rgba(96, 165, 250, 0.1);">🎯</div>
+          <h3>Portfolio Optimization</h3>
+          <p>Mean-variance, risk parity, and constrained optimization with sector limits.</p>
+          <div class="feature-tags">
+            <span class="feature-tag tag-blue">Mean-Variance</span>
+            <span class="feature-tag tag-blue">Risk Parity</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Slide 5: Integrations -->
+  <section class="slide" id="slide-4">
+    <div class="slide-content slide-animate">
+      <div class="integrations-header">
+        <h2>Enterprise Integrations</h2>
+        <p style="color: var(--text-secondary);">Built on battle-tested open source and enterprise tools</p>
+      </div>
+
+      <div class="integrations-grid">
+        <div class="integration-card">
+          <div class="integration-logo">🏛️</div>
+          <h4>Open Risk Engine</h4>
+          <p>Industry-standard C++ derivatives pricing</p>
+          <span class="integration-type">RISK ANALYTICS</span>
+        </div>
+
+        <div class="integration-card">
+          <div class="integration-logo">🐻</div>
+          <h4>ArcticDB</h4>
+          <p>High-performance time-series database</p>
+          <span class="integration-type">DATA STORAGE</span>
+        </div>
+
+        <div class="integration-card">
+          <div class="integration-logo">📈</div>
+          <h4>VectorBT</h4>
+          <p>Fast vectorized backtesting engine</p>
+          <span class="integration-type">BACKTESTING</span>
+        </div>
+
+        <div class="integration-card">
+          <div class="integration-logo">📊</div>
+          <h4>QuantStats</h4>
+          <p>Portfolio analytics and reporting</p>
+          <span class="integration-type">REPORTING</span>
+        </div>
+
+        <div class="integration-card">
+          <div class="integration-logo">🧮</div>
+          <h4>SciPy / NumPy</h4>
+          <p>Scientific computing foundation</p>
+          <span class="integration-type">COMPUTATION</span>
+        </div>
+
+        <div class="integration-card">
+          <div class="integration-logo">🐼</div>
+          <h4>Pandas</h4>
+          <p>Data manipulation and analysis</p>
+          <span class="integration-type">DATA HANDLING</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Slide 6: Use Cases -->
+  <section class="slide" id="slide-5">
+    <div class="slide-content slide-animate">
+      <div class="usecases-container">
+        <h2>Built for Real Problems</h2>
+
+        <div class="usecase-cards">
+          <div class="usecase-card">
+            <div class="usecase-header">
+              <div class="usecase-icon" style="background: rgba(99, 255, 218, 0.1);">🏦</div>
+              <h3>Daily Risk Monitoring</h3>
+            </div>
+            <p>
+              Track portfolio VaR and CVaR in real-time. Get alerts when risk limits are breached.
+              Generate regulatory reports automatically.
+            </p>
+            <div class="usecase-metrics">
+              <div class="usecase-metric">
+                <div class="usecase-metric-value">95%</div>
+                <div class="usecase-metric-label">VaR Confidence</div>
+              </div>
+              <div class="usecase-metric">
+                <div class="usecase-metric-value">252</div>
+                <div class="usecase-metric-label">Day Window</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="usecase-card">
+            <div class="usecase-header">
+              <div class="usecase-icon" style="background: rgba(248, 113, 113, 0.1);">⚠️</div>
+              <h3>Stress Testing & Scenarios</h3>
+            </div>
+            <p>
+              What if 2008 happens again? Run historical crisis scenarios and custom shocks
+              to understand tail risk exposure.
+            </p>
+            <div class="usecase-metrics">
+              <div class="usecase-metric">
+                <div class="usecase-metric-value">7</div>
+                <div class="usecase-metric-label">Historical Events</div>
+              </div>
+              <div class="usecase-metric">
+                <div class="usecase-metric-value">-57%</div>
+                <div class="usecase-metric-label">2008 Crisis</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="usecase-card">
+            <div class="usecase-header">
+              <div class="usecase-icon" style="background: rgba(74, 222, 128, 0.1);">🎯</div>
+              <h3>Strategy Backtesting</h3>
+            </div>
+            <p>
+              Test trading strategies before deploying capital. Factor analysis, performance
+              attribution, and risk-adjusted returns.
+            </p>
+            <div class="usecase-metrics">
+              <div class="usecase-metric">
+                <div class="usecase-metric-value">500+</div>
+                <div class="usecase-metric-label">Securities</div>
+              </div>
+              <div class="usecase-metric">
+                <div class="usecase-metric-value">3yr</div>
+                <div class="usecase-metric-label">Backtest</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="usecase-card">
+            <div class="usecase-header">
+              <div class="usecase-icon" style="background: rgba(167, 139, 250, 0.1);">⚖️</div>
+              <h3>Portfolio Optimization</h3>
+            </div>
+            <p>
+              Find optimal allocations given risk constraints. Mean-variance, risk parity,
+              and custom objective functions.
+            </p>
+            <div class="usecase-metrics">
+              <div class="usecase-metric">
+                <div class="usecase-metric-value">2.1x</div>
+                <div class="usecase-metric-label">Diversification</div>
+              </div>
+              <div class="usecase-metric">
+                <div class="usecase-metric-value">8.1%</div>
+                <div class="usecase-metric-label">Portfolio Vol</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Slide 7: CTA -->
+  <section class="slide" id="slide-6">
+    <div class="slide-content slide-animate">
+      <div class="cta-container">
+        <h2>Get Started</h2>
+        <p>Open source. Production ready. Built with AI-assisted development.</p>
+
+        <div class="cta-code">
+          <span class="comment"># Clone and run</span><br>
+          <span class="command">git clone</span> https://github.com/nealatnaidoo/MatrixRiskEngine<br>
+          <span class="command">pip install</span> -r requirements.txt<br>
+          <span class="command">pytest</span> tests/ -v
+        </div>
+
+        <div class="cta-links">
+          <a href="https://github.com/nealatnaidoo/MatrixRiskEngine" class="cta-link primary">
+            <span>⭐</span> View on GitHub
+          </a>
+          <a href="AGENT_DRIVEN_DEVELOPMENT.md" class="cta-link secondary">
+            <span>📖</span> Read the Docs
+          </a>
+        </div>
+
+        <div class="tech-stack">
+          <h4>Powered By</h4>
+          <div class="tech-icons">
+            <div class="tech-icon">
+              <span>🐍</span>
+              <span>Python</span>
+            </div>
+            <div class="tech-icon">
+              <span>🏛️</span>
+              <span>ORE</span>
+            </div>
+            <div class="tech-icon">
+              <span>🐼</span>
+              <span>Pandas</span>
+            </div>
+            <div class="tech-icon">
+              <span>🧮</span>
+              <span>NumPy</span>
+            </div>
+            <div class="tech-icon">
+              <span>🧪</span>
+              <span>Pytest</span>
+            </div>
+            <div class="tech-icon">
+              <span>🤖</span>
+              <span>Claude</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <script>
+    // Navigation dots
+    const dots = document.querySelectorAll('.nav-dot');
+    const slides = document.querySelectorAll('.slide');
+
+    dots.forEach(dot => {
+      dot.addEventListener('click', () => {
+        const slideIndex = dot.dataset.slide;
+        slides[slideIndex].scrollIntoView({ behavior: 'smooth' });
+      });
+    });
+
+    // Update active dot on scroll
+    const observerOptions = {
+      threshold: 0.5
+    };
+
+    const slideObserver = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          const slideIndex = Array.from(slides).indexOf(entry.target);
+          dots.forEach((dot, i) => {
+            dot.classList.toggle('active', i === slideIndex);
+          });
+        }
+      });
+    }, observerOptions);
+
+    slides.forEach(slide => slideObserver.observe(slide));
+
+    // Animate slide content on scroll
+    const animateElements = document.querySelectorAll('.slide-animate');
+
+    const animateObserver = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          entry.target.classList.add('visible');
+        }
+      });
+    }, { threshold: 0.2 });
+
+    animateElements.forEach(el => animateObserver.observe(el));
+
+    // Stagger feature card animations
+    const featureCards = document.querySelectorAll('.feature-card');
+    featureCards.forEach((card, i) => {
+      card.style.transitionDelay = (i * 0.1) + 's';
+    });
+
+    const integrationCards = document.querySelectorAll('.integration-card');
+    integrationCards.forEach((card, i) => {
+      card.style.transitionDelay = (i * 0.08) + 's';
+    });
+  </script>
+</body>
+</html>
