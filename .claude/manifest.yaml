@@ -1,0 +1,33 @@
+schema_version: "1.0"
+project_slug: "matrix_risk_engine"
+project_name: "Matrix Risk Engine"
+created: "2026-01-30T20:27:09Z"
+last_updated: "2026-01-30T20:27:09Z"
+phase: "coding"
+phase_started: "2026-01-30T20:27:09Z"
+
+artifact_versions:
+  spec:
+    version: 1
+    file: ".claude/artifacts/002_spec_v1.md"
+    created: "2026-01-30T20:27:09Z"
+  tasklist:
+    version: 1
+    file: ".claude/artifacts/003_tasklist_v1.md"
+    created: "2026-01-30T20:27:09Z"
+  rules:
+    version: 1
+    file: ".claude/artifacts/004_rules_v1.yaml"
+    created: "2026-01-30T20:27:09Z"
+  quality_gates:
+    version: 1
+    file: ".claude/artifacts/005_quality_gates_v1.md"
+    created: "2026-01-30T20:27:09Z"
+
+outstanding:
+  tasks: []
+  remediation: []
+
+reviews:
+  last_qa_review: null
+  last_code_review: null
